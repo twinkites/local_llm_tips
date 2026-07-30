@@ -1,0 +1,1261 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>Local LLM Best Practices</title>
+<meta name="description" content="A field guide for running large language models on your own hardware: benefits, tradeoffs, what to run, and how to get started.">
+
+<link rel="icon" type="image/png" href="logo.png">
+<link rel="apple-touch-icon" href="logo.png">
+
+<!-- Open Graph / social previews -->
+<meta property="og:type" content="website">
+<meta property="og:url" content="https://twinkites.github.io/local_llm_tips/">
+<meta property="og:title" content="Local LLM Best Practices">
+<meta property="og:description" content="A field guide for running large language models on your own hardware: benefits, tradeoffs, what to run, and how to get started.">
+<meta property="og:image" content="https://twinkites.github.io/local_llm_tips/logo.png">
+<meta name="twitter:card" content="summary">
+<meta name="twitter:title" content="Local LLM Best Practices">
+<meta name="twitter:description" content="A field guide for running large language models on your own hardware: benefits, tradeoffs, what to run, and how to get started.">
+<meta name="twitter:image" content="https://twinkites.github.io/local_llm_tips/logo.png">
+
+<script>
+  (function () {
+    var saved = localStorage.getItem("theme");
+    if (saved === "light" || saved === "dark") {
+      document.documentElement.setAttribute("data-theme", saved);
+    }
+  })();
+</script>
+<style>
+  :root {
+    --bg: #12151a;
+    --surface: #191d24;
+    --surface-2: #1f242c;
+    --border: #2a3038;
+    --text: #e6e4dc;
+    --text-dim: #9aa0aa;
+    --text-faint: #5f6670;
+    --accent: #7fb69e;
+    --accent-bright: #a3d4bc;
+    --amber: #d99a5b;
+    --red: #c97064;
+    --mono: ui-monospace, "SF Mono", "JetBrains Mono", "Cascadia Code", Consolas, monospace;
+    --sans: -apple-system, BlinkMacSystemFont, "Segoe UI", "Inter", Helvetica, Arial, sans-serif;
+  }
+
+  :root[data-theme="light"] {
+    --bg: #f6f5f0;
+    --surface: #ffffff;
+    --surface-2: #ececE5;
+    --border: #d9d7cd;
+    --text: #1d2023;
+    --text-dim: #4c5157;
+    --text-faint: #7c8087;
+    --accent: #3f7f65;
+    --accent-bright: #2c6350;
+    --amber: #9c6320;
+    --red: #a1362b;
+  }
+
+  @media (prefers-color-scheme: light) {
+    :root:not([data-theme="dark"]) {
+      --bg: #f6f5f0;
+      --surface: #ffffff;
+      --surface-2: #ececE5;
+      --border: #d9d7cd;
+      --text: #1d2023;
+      --text-dim: #4c5157;
+      --text-faint: #7c8087;
+      --accent: #3f7f65;
+      --accent-bright: #2c6350;
+      --amber: #9c6320;
+      --red: #a1362b;
+    }
+  }
+
+  * { box-sizing: border-box; }
+
+  :focus-visible {
+    outline: 2px solid var(--accent);
+    outline-offset: 2px;
+  }
+
+  .skip-link {
+    position: absolute;
+    top: -48px;
+    left: 12px;
+    z-index: 50;
+    background: var(--accent);
+    color: var(--bg);
+    padding: 10px 16px;
+    border-radius: 4px;
+    font-family: var(--mono);
+    font-size: 13px;
+    transition: top 0.15s ease;
+  }
+  .skip-link:focus {
+    top: 12px;
+  }
+
+  html { scroll-behavior: smooth; }
+
+  body {
+    margin: 0;
+    background: var(--bg);
+    color: var(--text);
+    font-family: var(--sans);
+    line-height: 1.65;
+    font-size: 17px;
+    -webkit-font-smoothing: antialiased;
+  }
+
+  body::before {
+    content: "";
+    position: fixed;
+    inset: 0;
+    pointer-events: none;
+    background-image:
+      linear-gradient(var(--border) 1px, transparent 1px),
+      linear-gradient(90deg, var(--border) 1px, transparent 1px);
+    background-size: 64px 64px;
+    opacity: 0.06;
+    z-index: 0;
+  }
+
+  a { color: var(--accent-bright); text-decoration: none; border-bottom: 1px solid rgba(127,182,158,0.35); }
+  a:hover { border-bottom-color: var(--accent-bright); }
+
+  .wrap {
+    position: relative;
+    z-index: 1;
+    max-width: 780px;
+    margin: 0 auto;
+    padding: 0 24px 120px;
+  }
+
+  /* ---- Header / hero ---- */
+  header.hero {
+    padding: 100px 0 60px;
+    border-bottom: 1px solid var(--border);
+    margin-bottom: 8px;
+  }
+
+  .prompt-line {
+    font-family: var(--mono);
+    font-size: 14px;
+    color: var(--accent);
+    letter-spacing: 0.02em;
+    margin-bottom: 22px;
+  }
+  .prompt-line::before { content: "$ "; color: var(--text-faint); }
+  .cursor {
+    display: inline-block;
+    width: 8px;
+    height: 15px;
+    background: var(--accent);
+    margin-left: 2px;
+    animation: blink 1.1s steps(1) infinite;
+    vertical-align: -2px;
+  }
+  @keyframes blink { 50% { opacity: 0; } }
+
+  .title-row {
+    display: flex;
+    align-items: center;
+    gap: 18px;
+  }
+  .logo-badge {
+    flex: 0 0 auto;
+    width: 88px;
+    height: 88px;
+    border-radius: 50%;
+    background: #fff;
+    border: 1px solid var(--border);
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    overflow: hidden;
+  }
+  .logo-badge img {
+    width: 68px;
+    height: 68px;
+    object-fit: contain;
+  }
+
+  h1.title {
+    font-family: var(--mono);
+    font-size: clamp(30px, 5vw, 44px);
+    font-weight: 600;
+    letter-spacing: -0.01em;
+    margin: 0 0 18px;
+    color: var(--text);
+  }
+
+  .subtitle {
+    color: var(--text-dim);
+    font-size: 18px;
+    max-width: 58ch;
+    margin: 0;
+  }
+
+  .byline {
+    font-family: var(--mono);
+    font-size: 13px;
+    color: var(--text-faint);
+    margin: 14px 0 0;
+    letter-spacing: 0.02em;
+  }
+
+  .meta-row {
+    display: flex;
+    gap: 18px;
+    flex-wrap: wrap;
+    margin-top: 30px;
+    font-family: var(--mono);
+    font-size: 12.5px;
+    color: var(--text-faint);
+  }
+  .meta-row span { padding: 4px 10px; border: 1px solid var(--border); border-radius: 3px; }
+
+  /* ---- Nav ---- */
+  nav.toc {
+    margin: 40px 0 70px;
+    padding: 22px 24px;
+    background: var(--surface);
+    border: 1px solid var(--border);
+    border-radius: 6px;
+  }
+  nav.toc .toc-label {
+    font-family: var(--mono);
+    font-size: 12px;
+    text-transform: uppercase;
+    letter-spacing: 0.12em;
+    color: var(--text-faint);
+    margin-bottom: 14px;
+  }
+  nav.toc ol {
+    margin: 0;
+    padding: 0;
+    list-style: none;
+    columns: 2;
+    column-gap: 28px;
+  }
+  nav.toc li { margin-bottom: 9px; break-inside: avoid; }
+  nav.toc a {
+    color: var(--text-dim);
+    border-bottom: none;
+    font-size: 14.5px;
+  }
+  nav.toc a:hover { color: var(--accent-bright); }
+  nav.toc .num { color: var(--accent); font-family: var(--mono); font-size: 12.5px; margin-right: 8px; }
+
+  /* ---- Sections ---- */
+  section {
+    padding: 64px 0;
+    border-bottom: 1px solid var(--border);
+    scroll-margin-top: 24px;
+  }
+  section:last-of-type { border-bottom: none; }
+
+  .section-tag {
+    font-family: var(--mono);
+    font-size: 13px;
+    color: var(--accent);
+    margin-bottom: 10px;
+  }
+  .section-tag .path { color: var(--text-faint); }
+
+  h2 {
+    font-family: var(--mono);
+    font-size: 26px;
+    font-weight: 600;
+    margin: 0 0 22px;
+    color: var(--text);
+    letter-spacing: -0.01em;
+  }
+
+  h3 {
+    font-family: var(--sans);
+    font-size: 17px;
+    font-weight: 700;
+    color: var(--accent-bright);
+    margin: 34px 0 10px;
+  }
+
+  p { color: var(--text); margin: 0 0 16px; }
+  p.dim { color: var(--text-dim); }
+
+  ul, ol.plain { margin: 0 0 16px; padding-left: 22px; }
+  li { margin-bottom: 8px; color: var(--text); }
+  li::marker { color: var(--accent); }
+
+  code {
+    font-family: var(--mono);
+    background: var(--surface-2);
+    border: 1px solid var(--border);
+    padding: 2px 6px;
+    border-radius: 4px;
+    font-size: 0.87em;
+    color: var(--accent-bright);
+  }
+
+  pre {
+    background: var(--surface);
+    border: 1px solid var(--border);
+    border-radius: 6px;
+    padding: 18px 20px;
+    overflow-x: auto;
+    margin: 0 0 20px;
+  }
+  pre code {
+    background: none;
+    border: none;
+    padding: 0;
+    color: var(--text-dim);
+    font-size: 13.5px;
+    line-height: 1.6;
+  }
+
+  .code-block { position: relative; }
+  .code-block pre { margin: 0 0 20px; }
+  .copy-btn {
+    position: absolute;
+    top: 10px;
+    right: 10px;
+    background: var(--surface-2);
+    color: var(--text-faint);
+    border: 1px solid var(--border);
+    border-radius: 4px;
+    padding: 4px 10px;
+    font-family: var(--mono);
+    font-size: 11.5px;
+    cursor: pointer;
+  }
+  .copy-btn:hover { color: var(--text); border-color: var(--accent); }
+  .copy-btn.copied { color: var(--accent-bright); border-color: var(--accent); }
+
+  /* callout blocks */
+  .callout {
+    border: 1px solid var(--border);
+    border-left: 3px solid var(--accent);
+    background: var(--surface);
+    border-radius: 4px;
+    padding: 16px 20px;
+    margin: 20px 0;
+  }
+  .callout.warn { border-left-color: var(--amber); }
+  .callout.risk { border-left-color: var(--red); }
+  .callout .label {
+    font-family: var(--mono);
+    font-size: 11.5px;
+    text-transform: uppercase;
+    letter-spacing: 0.1em;
+    color: var(--accent);
+    margin-bottom: 8px;
+  }
+  .callout.warn .label { color: var(--amber); }
+  .callout.risk .label { color: var(--red); }
+  .callout p:last-child { margin-bottom: 0; }
+
+  /* tables */
+  table {
+    width: 100%;
+    border-collapse: collapse;
+    margin: 8px 0 24px;
+    font-size: 14.5px;
+  }
+  th, td {
+    text-align: left;
+    padding: 10px 14px;
+    border-bottom: 1px solid var(--border);
+  }
+  th {
+    font-family: var(--mono);
+    font-size: 12px;
+    text-transform: uppercase;
+    letter-spacing: 0.06em;
+    color: var(--text-faint);
+    font-weight: 500;
+  }
+  td { color: var(--text-dim); }
+  td:first-child, th:first-child { color: var(--text); font-weight: 600; }
+  td:first-child { color: var(--accent-bright); }
+  tr:last-child td { border-bottom: none; }
+
+  /* resource bars for tradeoffs section */
+  .gauge-row {
+    display: grid;
+    grid-template-columns: 140px 1fr 60px;
+    align-items: center;
+    gap: 14px;
+    margin-bottom: 14px;
+    font-size: 14px;
+  }
+  .gauge-row .g-label { font-family: var(--mono); color: var(--text-dim); font-size: 13px; }
+  .gauge-track {
+    height: 8px;
+    background: var(--surface-2);
+    border: 1px solid var(--border);
+    border-radius: 4px;
+    overflow: hidden;
+  }
+  .gauge-fill { height: 100%; background: linear-gradient(90deg, var(--accent), var(--accent-bright)); }
+  .gauge-row .g-val { font-family: var(--mono); color: var(--text-faint); font-size: 12.5px; text-align: right; }
+
+  .tier-card {
+    border: 1px solid var(--border);
+    background: var(--surface);
+    border-radius: 6px;
+    padding: 20px 22px;
+    margin-bottom: 16px;
+  }
+  .tier-card .tier-head {
+    display: flex;
+    justify-content: space-between;
+    align-items: baseline;
+    margin-bottom: 10px;
+    flex-wrap: wrap;
+    gap: 8px;
+  }
+  .tier-card .tier-name { font-family: var(--mono); font-weight: 600; color: var(--text); font-size: 15px; }
+  .tier-card .tier-spec { font-family: var(--mono); color: var(--text-faint); font-size: 12.5px; }
+  .tier-card p { margin-bottom: 8px; color: var(--text-dim); font-size: 15px; }
+  .tier-card p:last-child { margin-bottom: 0; }
+  .tier-card strong { color: var(--text); }
+
+  /* checklist */
+  .checklist { list-style: none; padding: 0; margin: 0 0 16px; }
+  .checklist li {
+    position: relative;
+    padding-left: 30px;
+    margin-bottom: 12px;
+    color: var(--text-dim);
+  }
+  .checklist li::before {
+    content: "";
+    position: absolute;
+    left: 0;
+    top: 3px;
+    width: 16px;
+    height: 16px;
+    border: 1px solid var(--accent);
+    border-radius: 3px;
+  }
+  .checklist li strong { color: var(--text); }
+
+  .legal {
+    padding: 40px 0 20px;
+    border-top: 1px solid var(--border);
+  }
+  .legal .legal-label {
+    font-family: var(--mono);
+    font-size: 12px;
+    text-transform: uppercase;
+    letter-spacing: 0.12em;
+    color: var(--text-faint);
+    margin-bottom: 16px;
+  }
+  .legal p {
+    color: var(--text-faint);
+    font-size: 13px;
+    line-height: 1.7;
+    margin: 0 0 12px;
+  }
+  .legal p:last-child { margin-bottom: 0; }
+
+  footer {
+    padding: 50px 0 20px;
+    text-align: center;
+    font-family: var(--mono);
+    font-size: 12.5px;
+    color: var(--text-faint);
+  }
+  footer a { color: var(--text-faint); border-bottom: 1px solid var(--border); }
+
+  @media (max-width: 600px) {
+    header.hero { padding: 70px 0 40px; }
+    nav.toc ol { columns: 1; }
+    .gauge-row { grid-template-columns: 100px 1fr 50px; }
+  }
+
+  /* ---- Theme toggle ---- */
+  #theme-toggle {
+    position: fixed;
+    top: 18px;
+    right: 24px;
+    z-index: 20;
+    background: var(--surface);
+    color: var(--text-dim);
+    border: 1px solid var(--border);
+    border-radius: 20px;
+    padding: 7px 14px;
+    font-family: var(--mono);
+    font-size: 12px;
+    cursor: pointer;
+  }
+  #theme-toggle:hover { color: var(--text); border-color: var(--accent); }
+
+  @media (max-width: 600px) {
+    #theme-toggle { top: 12px; right: 12px; padding: 6px 10px; }
+  }
+
+  /* ---- Chat widget ---- */
+  #chat-toggle {
+    position: fixed;
+    right: 24px;
+    bottom: 24px;
+    z-index: 20;
+    width: 52px;
+    height: 52px;
+    border-radius: 50%;
+    background: var(--accent);
+    color: var(--bg);
+    border: none;
+    cursor: pointer;
+    font-family: var(--mono);
+    font-size: 20px;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    box-shadow: 0 4px 16px rgba(0,0,0,0.35);
+  }
+  #chat-toggle:hover { background: var(--accent-bright); }
+
+  #chat-panel {
+    position: fixed;
+    right: 24px;
+    bottom: 88px;
+    z-index: 20;
+    width: min(380px, calc(100vw - 48px));
+    max-height: min(600px, calc(100vh - 140px));
+    background: var(--surface);
+    border: 1px solid var(--border);
+    border-radius: 8px;
+    display: none;
+    flex-direction: column;
+    overflow: hidden;
+    box-shadow: 0 8px 32px rgba(0,0,0,0.45);
+  }
+  #chat-panel.open { display: flex; }
+
+  #chat-header {
+    padding: 14px 16px;
+    border-bottom: 1px solid var(--border);
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    gap: 8px;
+  }
+  #chat-header .chat-title {
+    font-family: var(--mono);
+    font-size: 13px;
+    color: var(--accent-bright);
+  }
+  #chat-model-select {
+    /* Only one model is offered right now, so the selector is hidden;
+       this will matter again if MODELS in chat-worker.js grows. */
+    display: none;
+    background: var(--surface-2);
+    color: var(--text-dim);
+    border: 1px solid var(--border);
+    border-radius: 4px;
+    font-family: var(--mono);
+    font-size: 11.5px;
+    padding: 4px 6px;
+    max-width: 150px;
+  }
+  #chat-close {
+    background: none;
+    border: none;
+    color: var(--text-faint);
+    cursor: pointer;
+    font-size: 16px;
+    line-height: 1;
+    padding: 2px 4px;
+  }
+  #chat-close:hover { color: var(--text); }
+
+  #chat-status {
+    padding: 8px 16px;
+    font-family: var(--mono);
+    font-size: 11.5px;
+    color: var(--text-faint);
+    border-bottom: 1px solid var(--border);
+  }
+
+  #chat-log {
+    flex: 1;
+    overflow-y: auto;
+    padding: 14px 16px;
+    display: flex;
+    flex-direction: column;
+    gap: 12px;
+  }
+  .chat-msg {
+    font-size: 14px;
+    line-height: 1.55;
+    max-width: 92%;
+    padding: 8px 12px;
+    border-radius: 6px;
+    white-space: pre-wrap;
+  }
+  .chat-msg.user {
+    align-self: flex-end;
+    background: var(--surface-2);
+    color: var(--text);
+  }
+  .chat-msg.assistant {
+    align-self: flex-start;
+    background: transparent;
+    border: 1px solid var(--border);
+    color: var(--text-dim);
+  }
+  .chat-msg.system-note {
+    align-self: center;
+    color: var(--text-faint);
+    font-family: var(--mono);
+    font-size: 11.5px;
+    border: none;
+  }
+
+  #chat-suggestions {
+    display: flex;
+    flex-wrap: wrap;
+    gap: 6px;
+    padding: 0 16px 10px;
+  }
+  #chat-suggestions.hidden { display: none; }
+  .suggestion-chip {
+    background: var(--surface-2);
+    color: var(--text-dim);
+    border: 1px solid var(--border);
+    border-radius: 14px;
+    padding: 5px 11px;
+    font-family: var(--sans);
+    font-size: 12px;
+    cursor: pointer;
+    text-align: left;
+  }
+  .suggestion-chip:hover { color: var(--text); border-color: var(--accent); }
+  .suggestion-chip:disabled { opacity: 0.4; cursor: not-allowed; }
+
+  #chat-input-row {
+    display: flex;
+    gap: 8px;
+    padding: 12px;
+    border-top: 1px solid var(--border);
+  }
+  #chat-input {
+    flex: 1;
+    resize: none;
+    background: var(--surface-2);
+    color: var(--text);
+    border: 1px solid var(--border);
+    border-radius: 4px;
+    padding: 8px 10px;
+    font-family: var(--sans);
+    font-size: 14px;
+    max-height: 100px;
+  }
+  #chat-send {
+    background: var(--accent);
+    color: var(--bg);
+    border: none;
+    border-radius: 4px;
+    padding: 0 16px;
+    font-family: var(--mono);
+    font-size: 13px;
+    cursor: pointer;
+  }
+  #chat-send:hover:not(:disabled) { background: var(--accent-bright); }
+  #chat-send:disabled { opacity: 0.4; cursor: not-allowed; }
+
+  #chat-disclaimer {
+    padding: 8px 16px 12px;
+    font-family: var(--mono);
+    font-size: 10.5px;
+    color: var(--text-faint);
+    border-top: 1px solid var(--border);
+  }
+
+  @media (max-width: 600px) {
+    #chat-panel { right: 12px; left: 12px; width: auto; bottom: 84px; }
+    #chat-toggle { right: 16px; bottom: 16px; }
+  }
+</style>
+</head>
+<body>
+<a href="#main-content" class="skip-link">Skip to content</a>
+<button id="theme-toggle" aria-label="Toggle dark/light theme">light / dark</button>
+<div class="wrap">
+
+  <header class="hero" id="main-content">
+    <div class="prompt-line">~/docs/local-llm-best-practices<span class="cursor"></span></div>
+    <div class="title-row">
+      <span class="logo-badge"><img src="logo.png" alt="Twin Kites LLC logo" width="88" height="88"></span>
+      <h1 class="title">Local LLM Best Practices</h1>
+    </div>
+    <p class="subtitle">A field guide for running large language models on your own hardware: benefits, tradeoffs, what to run, and how to get started without getting overwhelmed.</p>
+    <p class="byline">By Twin Kites LLC &middot; <span id="last-updated">Last updated: 2026-07-30</span></p>
+    <div class="meta-row">
+      <span>field guide</span>
+      <span>llamafile · Jan.AI · Ollama · LM Studio</span>
+      <span>GGUF / MLX</span>
+      <span>v1.1</span>
+    </div>
+  </header>
+
+  <nav class="toc">
+    <div class="toc-label">Contents</div>
+    <ol>
+      <li><span class="num">01</span><a href="#quickstart">Quickstart</a></li>
+      <li><span class="num">02</span><a href="#why">Why Run Models Locally</a></li>
+      <li><span class="num">03</span><a href="#landscape">Tool Landscape</a></li>
+      <li><span class="num">04</span><a href="#taxonomy">Model Taxonomy</a></li>
+      <li><span class="num">05</span><a href="#harness">Build Your Own Harness</a></li>
+      <li><span class="num">06</span><a href="#prompt">Adjust the Prompt and Settings</a></li>
+      <li><span class="num">07</span><a href="#sandbox">Sandboxing</a></li>
+      <li><span class="num">08</span><a href="#troubleshooting">Troubleshooting</a></li>
+      <li><span class="num">09</span><a href="#tradeoffs">Tradeoffs: RAM, VRAM, Throughput</a></li>
+      <li><span class="num">10</span><a href="#lumo">Where Lumo and Duck.ai Fit</a></li>
+      <li><span class="num">11</span><a href="#glossary">Glossary</a></li>
+      <li><span class="num">12</span><a href="#references">References</a></li>
+    </ol>
+  </nav>
+
+  <!-- 01 -->
+  <section id="quickstart">
+    <div class="section-tag"><span class="path">01 /</span> quickstart</div>
+    <h2>Quickstart</h2>
+    <p>If your goal is to get a model running quickly, you can skip ahead of the background sections below and return to them once you have something working.</p>
+
+    <div class="callout warn">
+      <div class="label">Know what you're running</div>
+      <p>The install command below pipes a remote script straight into a shell. Don't run that pattern on autopilot, here or anywhere else. Open the script URL in a browser first and skim it, or download it and read it before executing (<code>curl -fsSL https://ollama.com/install.sh -o install.sh</code>, then open <code>install.sh</code>). The same rule applies to every <code>curl | sh</code> and <code>| bash</code> you'll see across this ecosystem: know what the code does before it touches your machine. Critical thinking is one of the most important skills you have as a human reading these words, definitely use it here.</p>
+    </div>
+
+    <div class="code-block">
+      <button class="copy-btn" type="button">copy</button>
+      <pre><code># macOS / Linux / WSL: fetch and run Ollama's install script.
+# (see the callout above: read it before piping it into a shell)
+curl -fsSL https://ollama.com/install.sh | sh
+
+# pull the model weights (first time only) and start an
+# interactive chat session in the terminal
+ollama run qwen2.5:7b
+
+# ollama also runs a local server in the background;
+# point any OpenAI-compatible client at this URL instead
+# of api.openai.com to use it programmatically
+http://localhost:11434/v1</code></pre>
+    </div>
+
+    <p class="dim">No GPU, or only 8GB of RAM? Swap <code>qwen2.5:7b</code> for <code>qwen2.5:3b</code> or <code>llama3.2:1b</code>. First run downloads the weights (a few GB); every run after that is instant.</p>
+
+    <div class="checklist">
+      <li><strong>Prefer a GUI?</strong> Install <a href="#landscape">Jan.AI or LM Studio</a> instead, pick a model from their in-app catalog, and skip the terminal entirely.</li>
+      <li><strong>On Apple Silicon?</strong> LM Studio and Jan.AI both support MLX models out of the box; see <a href="#landscape">Tool Landscape</a> for why that matters.</li>
+      <li><strong>Something feels off?</strong> If the model is slow, repetitive, ignoring instructions, etc., jump straight to <a href="#troubleshooting">Troubleshooting</a>.</li>
+    </div>
+  </section>
+
+  <!-- 02 -->
+  <section id="why">
+    <div class="section-tag"><span class="path">02 /</span> why-local</div>
+    <h2>Why Run Models Locally</h2>
+    <p>Local models allow you to be in control of where your data goes and run on your local hardware. They are only limited by the hardware you run them on.</p>
+
+    <h3>Privacy and IP</h3>
+    <p>Nothing leaves the machine. This matters for confidential client work, unpublished research, internal codebases, and customer data that should not be sent to a third party's servers. With local inference, the claim that data never left the machine can be verified directly, rather than taken on faith in a vendor's policy.</p>
+
+    <h3>Cost at volume</h3>
+    <p>API pricing is per-token and scales linearly with usage. A local box is a fixed cost: hardware purchased once, with ongoing electricity costs. For workloads running thousands of inference calls a day, such as batch jobs, agent loops, or evaluation harnesses, the breakeven point arrives quickly.</p>
+
+    <h3>Offline and air-gapped operation</h3>
+    <p>For field work, secure facilities, unreliable connectivity, or a flaky home internet connection, local inference has no dependency on network availability. A llamafile on a USB stick functions as a complete, self-contained assistant.</p>
+
+    <h3>Experimentation without a meter running</h3>
+    <p>Testing multiple quantizations of the same model, adjusting sampling parameters, fine-tuning a LoRA, or deliberately breaking the setup to see how it fails, all of this is free once the weights are downloaded. This allows for open-ended exploration rather than the more cautious, metered experimentation that hosted APIs require. With the weights on your own disk, you can inspect them directly and control every setting exposed by the runtime, a level of access into a model's inner workings that a hosted API, where you're limited to whatever parameters the provider chooses to expose, doesn't offer.</p>
+
+    <h3>Latency</h3>
+    <p>There is no network round trip. For agentic workflows that make many small calls in a loop, local inference on reasonably capable hardware can respond faster overall than a hosted API, even at a lower raw tokens-per-second rate, because there is no request queue or rate limit involved.</p>
+
+    <div class="callout">
+      <div class="label">Where it doesn't win</div>
+      <p>Local models will not match the reasoning ability of a frontier hosted model, and running a large model well still requires substantial hardware. We treat local inference as a complement to hosted APIs for the workloads described above, and continue to rely on hosted models for the hardest problems. Like many solutions in life, the fix is normally a hybrid of many technologies and the procedures around how we implement them.</p>
+    </div>
+  </section>
+
+  <!-- 03 -->
+  <section id="landscape">
+    <div class="section-tag"><span class="path">03 /</span> tool-landscape</div>
+    <h2>Tool Landscape</h2>
+    <p>Most mainstream local runners are built on top of <code>llama.cpp</code>, or on Apple Silicon, MLX. What differs between them is the packaging: how much control the user has, how polished the interface is, and how easily an agent framework can connect to the resulting server.</p>
+
+    <table>
+      <thead>
+        <tr><th>Tool</th><th>Form</th><th>Best for</th></tr>
+      </thead>
+      <tbody>
+        <tr><td><a href="https://jan.ai" target="_blank" rel="noopener">Jan.AI</a></td><td>Desktop app + local API</td><td>Clean GUI with an OpenAI-compatible endpoint out of the box; good default on Apple Silicon</td></tr>
+        <tr><td><a href="https://github.com/Mozilla-Ocho/llamafile" target="_blank" rel="noopener">llamafile</a></td><td>Single executable</td><td>Portability: air-gapped machines, demos, handing a model to someone non-technical</td></tr>
+        <tr><td><a href="https://lmstudio.ai" target="_blank" rel="noopener">LM Studio</a></td><td>Desktop app</td><td>Performance tuning; built-in tokens/sec and VRAM diagnostics, strong on NVIDIA</td></tr>
+        <tr><td><a href="https://ollama.com" target="_blank" rel="noopener">Ollama</a></td><td>CLI + local API</td><td>Low-friction scripting and container deployments, curated model library</td></tr>
+        <tr><td><a href="https://github.com/ggml-org/llama.cpp" target="_blank" rel="noopener">llama.cpp (raw)</a></td><td>Library / server binary</td><td>Full control; custom quantization, grammars, speculative decoding, headless servers</td></tr>
+      </tbody>
+    </table>
+
+    <h3>Model formats</h3>
+    <table>
+      <thead><tr><th>Format</th><th>Notes</th></tr></thead>
+      <tbody>
+        <tr><td>GGUF</td><td>The standard across llama.cpp-based tools. Comes in graded quantizations (Q4_K_M, Q5_K_M, Q8_0…)</td></tr>
+        <tr><td>MLX</td><td>Apple Silicon–native. Noticeably faster than GGUF on M-series chips when a build exists</td></tr>
+        <tr><td>Safetensors</td><td>Full-precision, used for training/fine-tuning or GPU-server inference (vLLM, TGI); not a laptop-chat format</td></tr>
+      </tbody>
+    </table>
+
+    <div class="callout">
+      <div class="label">Rule of thumb</div>
+      <p>On a Mac, we recommend starting with MLX builds; they consistently outperform GGUF at the same quantization level on unified memory. On other platforms, GGUF remains the most broadly supported format.</p>
+    </div>
+  </section>
+
+  <!-- 04 -->
+  <section id="taxonomy">
+    <div class="section-tag"><span class="path">04 /</span> model-taxonomy</div>
+    <h2>Model Taxonomy</h2>
+    <p>The question of which model to use is really several smaller questions considered together: architecture, size class, tuning lineage, family, and openness tier. Separating these makes it clear why a model well suited to one task can be a poor choice for another, even at the same file size.</p>
+    <p class="dim">Thanks to h/t for inspiration for this section.</p>
+
+    <h3>By architecture</h3>
+    <table>
+      <thead><tr><th>Type</th><th>How it works</th><th>Practical effect</th></tr></thead>
+      <tbody>
+        <tr><td>Dense</td><td>Every parameter fires on every token</td><td>Predictable memory footprint; quality scales directly with size</td></tr>
+        <tr><td>Mixture-of-Experts (MoE)</td><td>A router activates a subset of "expert" sub-networks per token</td><td>Total size ≠ compute cost: only active params matter for throughput. A 30B MoE with 3B active can run like an 8B dense model</td></tr>
+      </tbody>
+    </table>
+    <p class="dim">Total parameter count on a model card tells you the download size. Active parameter count tells you how fast it'll actually run, so check both.</p>
+
+    <h3>By size class</h3>
+    <table>
+      <thead><tr><th>Class</th><th>Range</th><th>Where it lives</th></tr></thead>
+      <tbody>
+        <tr><td>Tiny</td><td>≤3B</td><td>Phone, Raspberry Pi–class hardware, edge deployments</td></tr>
+        <tr><td>Small</td><td>4B–9B</td><td>Laptop daily driver, 8–12GB VRAM tier</td></tr>
+        <tr><td>Mid</td><td>13B–34B</td><td>Workstation tier; meaningfully stronger reasoning</td></tr>
+        <tr><td>Large</td><td>34B–70B+</td><td>High-memory workstation, or MoE to make it locally practical at all</td></tr>
+      </tbody>
+    </table>
+
+    <h3>By tuning lineage</h3>
+    <ul>
+      <li><strong>Base</strong>: raw pretrained weights, no chat template. Completes text, doesn't follow instructions. Rarely what you want off the shelf.</li>
+      <li><strong>Instruct / Chat</strong>: the default for everyday use. Tuned to follow directions and hold a conversation.</li>
+      <li><strong>Reasoning</strong>: trained to produce extended chain-of-thought before answering (QwQ, R1-distills). Slower and more verbose, but noticeably better on multi-step problems.</li>
+      <li><strong>Code / tool-use</strong>: "Coder" variants and function-calling fine-tunes. The right default for anything going into an agent harness; see <a href="#harness">Build Your Own Harness</a>.</li>
+      <li><strong>Vision-language</strong>: accepts image input alongside text. Useful for screenshots, diagrams, scanned documents.</li>
+      <li><strong>Uncensored / abliterated</strong>: refusal directions surgically removed from an instruct model. A different risk profile than the categories above; treat outputs accordingly, and keep the same sandboxing discipline regardless.</li>
+    </ul>
+
+    <h3>By family</h3>
+    <p>Model family reflects more than a benchmark score; each family carries a distinct set of practical strengths:</p>
+    <ul>
+      <li><strong>Qwen</strong> (Alibaba): widest spread of size tiers and variants, strong default for coding and agentic work.</li>
+      <li><strong>Llama</strong> (Meta): broad ecosystem support, usually the first family a new tool integrates.</li>
+      <li><strong>Gemma</strong> (Google): efficient at small sizes, strong instruction-following for its footprint.</li>
+      <li><strong>Mistral</strong> (Mistral AI): European alternative, competitive dense and MoE releases.</li>
+      <li><strong>OLMo</strong> (Allen Institute): publishes weights, training data, and training code, and is generally treated as the reference case for openness.</li>
+      <li><strong>DeepSeek</strong>: strong reasoning-tuned releases, notable MoE architecture work.</li>
+      <li><strong>Phi</strong> (Microsoft): small-model-punches-above-its-weight, good for the VRAM-constrained tier.</li>
+      <li><strong>GLM</strong> (Zhipu): competitive general-purpose and agentic releases, increasingly common in multi-model routing setups.</li>
+    </ul>
+
+    <h3>By openness tier</h3>
+    <p>This distinction matters if you are ever asked whether a given model or workflow can be audited. The term "open source" is used loosely on model cards and by hosted assistants alike, so it is worth being precise about which tier is actually meant.</p>
+    <table>
+      <thead><tr><th>Tier</th><th>What's public</th><th>Examples</th></tr></thead>
+      <tbody>
+        <tr><td>Open weights only</td><td>Model weights, sometimes a technical report; not the training data or code</td><td>Most Qwen, Llama, Mistral, Gemma releases</td></tr>
+        <tr><td>Open weights + inference code</td><td>Weights plus the code to run them, still no training data</td><td>Common across the ecosystem: this is the default the tools in <a href="#landscape">Tool Landscape</a> assume</td></tr>
+        <tr><td>Fully open</td><td>Weights, training data, training code, and eval harness</td><td>OLMo, one of the few cases where "open source" applies literally rather than as shorthand</td></tr>
+      </tbody>
+    </table>
+    <p class="dim">The same distinction comes up in <a href="#lumo">Where Lumo and Duck.ai Fit</a>: "built on open-source models" and "the service itself is open source" are different claims, and this table lays out the gap between them.</p>
+
+    <h3>How a model classifies your prompt</h3>
+    <p>The taxonomy above describes how a model was built. It's worth remembering that a model also applies its own internal taxonomy to whatever you send it, sorting the request into a category before it decides how to respond, and that classification shapes the answer as much as the prompt's wording does.</p>
+    <p>Claude, for example, routes an incoming message into something like: a quick factual question that gets a short, direct answer; a request that's ambiguous enough to warrant a clarifying question before acting; a coding or multi-step task substantial enough to lay out a plan first; or an explicit instruction to work autonomously and report back when done. The same underlying question, phrased two different ways, can land in different buckets and get a materially different response. Local models do this too, just with less consistency: smaller and less-aligned models are more likely to misclassify a request (treating a question as a command, or an ambiguous ask as one it should just guess at) which is part of why <a href="#prompt">prompt and settings</a> tuning matters more on local setups.</p>
+
+    <div class="callout">
+      <div class="label">How to use this</div>
+      <p>Pick architecture and size class from your hardware budget (see <a href="#tradeoffs">Tradeoffs</a>), pick tuning lineage from the job the model needs to do, and treat family as a tiebreaker once the first two axes narrow the field. Openness tier matters most when the model's output or your prompts need to survive an audit.</p>
+    </div>
+  </section>
+
+  <!-- 05 -->
+  <section id="harness">
+    <div class="section-tag"><span class="path">05 /</span> build-your-own-harness</div>
+    <h2>Build Your Own Harness</h2>
+    <p>A model server on its own does not constitute an agent. The harness is the layer that provides the model with tools, memory, a control loop, and a way to act on a filesystem or codebase. Each of the runners listed above exposes an OpenAI-compatible endpoint, which is the interface a harness is built against.</p>
+
+    <table>
+      <thead><tr><th>Harness</th><th>Type</th><th>Notes</th></tr></thead>
+      <tbody>
+        <tr><td>OpenClaw</td><td>Open-source agent</td><td>Fully open stack when paired with an open runner; no closed-source link anywhere in the chain</td></tr>
+        <tr><td>OpenCode</td><td>Open-source agent</td><td>Terminal-first, works well over SSH for remote or headless boxes</td></tr>
+        <tr><td>Aider</td><td>CLI pair-programmer</td><td>Git-aware, strong at diffs and commit-scoped changes</td></tr>
+        <tr><td>Cline</td><td>Editor extension</td><td>VS Code–native, good visibility into each tool call before it runs</td></tr>
+        <tr><td>Continue.dev</td><td>Editor extension</td><td>Flexible model backend config, good for mixing local and hosted</td></tr>
+        <tr><td>Open WebUI</td><td>Chat frontend</td><td>Not agentic by itself, but the standard self-hosted chat UI to sit in front of Ollama/vLLM</td></tr>
+      </tbody>
+    </table>
+
+    <h3>The minimal stack</h3>
+    <p>The approach that holds up across different setups is to run the model server headless, point an OpenAI-compatible client at it, and keep the two decoupled so either half can be replaced independently.</p>
+    <div class="code-block">
+      <button class="copy-btn" type="button">copy</button>
+      <pre><code># model server (Jan, Ollama, or llama.cpp server)
+# exposes an OpenAI-compatible endpoint, e.g.:
+http://127.0.0.1:6767/v1
+
+# agent harness config points at that endpoint
+# instead of api.openai.com. Everything else about
+# the harness (tool definitions, loop logic, memory)
+# stays the same</code></pre>
+    </div>
+
+    <p>Because the interface is standardized, switching agents later, for example from OpenClaw to OpenCode, requires only a configuration change rather than a rebuild. We recommend avoiding hardcoded assumptions about which runner sits behind the endpoint in the harness logic.</p>
+
+    <h3>Tool access via MCP</h3>
+    <p>The <a href="https://modelcontextprotocol.io" target="_blank" rel="noopener">Model Context Protocol (MCP)</a> is a standardized way to expose tools, files, and external services to a model, so a harness doesn't need a custom integration for every tool it wants to support. Most of the harnesses in the table above can act as an MCP client; pointing one at an MCP server is generally less work than writing and maintaining a bespoke tool definition. The same caveat from <a href="#sandbox">Sandboxing</a> applies here: an MCP server is another surface that can read or write on your behalf, so scope its permissions and credentials the same way you would any other tool.</p>
+
+    <div class="callout">
+      <div class="label">Model fit</div>
+      <p>For agentic and coding harnesses, we recommend prioritizing models fine-tuned for tool use, such as "Coder" or "Instruct" variants trained on function-calling formats. A strong general chat model without tool-calling training will still produce malformed tool syntax under an agent loop, even when its raw reasoning ability is strong.</p>
+    </div>
+  </section>
+
+  <!-- 06 -->
+  <section id="prompt">
+    <div class="section-tag"><span class="path">06 /</span> adjust-the-prompt-and-settings</div>
+    <h2>Adjust the Prompt and Settings</h2>
+    <p>Local models tend to be more sensitive to prompt and sampling configuration than hosted models, in part because they typically receive less alignment tuning, so a poorly written system prompt has a more visible effect. Configuration generally needs to be tuned per model, rather than applied once across an entire stack.</p>
+
+    <h3>System prompt</h3>
+    <p>Be explicit about tool-calling format, output structure, and any constraints. Local models follow instructions less robustly than a frontier hosted model at the same nominal size. If the model has a documented chat template, use it exactly; deviating from the template a model was fine-tuned on degrades output quality more than people expect.</p>
+
+    <h3>Sampling parameters</h3>
+    <ul>
+      <li><strong>Temperature</strong>: lower (0.1–0.3) for tool-calling and code generation, where you want determinism over creativity. Higher (0.7+) for open-ended writing.</li>
+      <li><strong>Top-p / top-k</strong>: leave at model defaults unless you have a specific reason not to; most local models ship with sane presets tuned by whoever quantized them.</li>
+      <li><strong>Repeat penalty</strong>: smaller local models loop and repeat more than large hosted ones. If you see degenerate repetition, this is usually the first knob to touch.</li>
+    </ul>
+
+    <h3>Context length and YaRN</h3>
+    <p>A model's advertised context window is an upper bound, not a guarantee of consistent quality at that length; quality tends to degrade toward the edges even within the trained window. If you need to push past the native window, YaRN-based extension is the standard approach, though it comes with a real quality cost as you approach the extended limit. We recommend testing at the context length you expect to use in practice, rather than relying on the model's default.</p>
+
+    <h3>Quantization as a prompt-quality lever</h3>
+    <p>Quantization is usually framed purely as a memory tradeoff, but it also affects instruction-following. If a model is ignoring parts of a complex system prompt, check the quant before you rewrite the prompt. An aggressive quant (Q3 or below) causes exactly this. Bump to Q4_K_M or Q5_K_M first.</p>
+
+    <div class="callout warn">
+      <div class="label">Common trap</div>
+      <p>Copy-pasting a system prompt tuned for a hosted frontier model onto a local 8B model rarely works as-is. Smaller models require shorter, more direct instructions, with less implicit reasoning expected of them. System prompts should be written for the specific model being used, rather than adapted unchanged from a larger one.</p>
+    </div>
+  </section>
+
+  <!-- 07 -->
+  <section id="sandbox">
+    <div class="section-tag"><span class="path">07 /</span> sandboxing</div>
+    <h2>Sandboxing</h2>
+    <p>Running a model locally does not make it inherently safer to grant it tool access. An agentic harness with filesystem or shell access follows instructions the same way a remote one would, including instructions that may be adversarial, only on hardware you own. It should be isolated accordingly.</p>
+
+    <h3>Network isolation</h3>
+    <p>The inference host should sit on its own VLAN, separate from your primary network and anything holding sensitive data. The same approach applies to any self-hosted service with a web-facing or agent-facing surface: segment it, and do not give it a network route to devices it has no reason to communicate with.</p>
+
+    <h3>Container boundaries</h3>
+    <p>Run the model server and, especially, any agent harness with filesystem/shell access inside a container with an explicit, minimal mount list. Don't bind-mount your home directory into a container that's going to be executing model-generated shell commands. Scope it to the project directory the agent actually needs.</p>
+
+    <h3>Prompt injection</h3>
+    <p>Any content the model reads, such as a file, a scraped webpage, or a tool result, is a vector for instructions that did not come from you. This risk does not go away because the model is local; if anything, smaller local models are more likely to comply with an injected instruction because they have had less safety tuning. Tool outputs should be treated as untrusted input rather than as trusted context.</p>
+
+    <h3>Checkpoint and weight integrity</h3>
+    <p>Verify checksums on downloaded weights, especially from mirrors rather than the original model card. A tampered GGUF is a plausible supply-chain vector that gets little attention compared to package-manager supply-chain attacks, but the mechanism is the same.</p>
+
+    <h3>Permission scoping for agent harnesses</h3>
+    <ul>
+      <li>Default to read-only or dry-run mode; require explicit confirmation before the harness executes writes, commits, or shell commands.</li>
+      <li>Keep an audit log of tool calls the harness actually made, not just what it said it would do.</li>
+      <li>Never give an autonomous loop credentials with more scope than the immediate task needs.</li>
+    </ul>
+
+    <div class="callout risk">
+      <div class="label">Don't skip this</div>
+      <p>Running on your own machine is not, by itself, a security boundary. Isolation still needs to be built through VLAN segmentation, containerization, and permission scoping, the same as for any service that accepts untrusted input.</p>
+    </div>
+  </section>
+
+  <!-- 08 -->
+  <section id="troubleshooting">
+    <div class="section-tag"><span class="path">08 /</span> troubleshooting</div>
+    <h2>Troubleshooting</h2>
+    <p>Most local-inference problems collapse into a handful of root causes. This table is a scan-first reference; the linked sections have the full explanation.</p>
+
+    <table>
+      <thead><tr><th>Symptom</th><th>Likely cause</th><th>Fix</th></tr></thead>
+      <tbody>
+        <tr><td>Crash / OOM on load</td><td>Model larger than available VRAM or unified memory</td><td>Drop to a smaller size class or a more aggressive quant; see <a href="#tradeoffs">Tradeoffs</a></td></tr>
+        <tr><td>Extremely slow tokens/sec</td><td>Model spilled from VRAM into system RAM</td><td>Confirm the model actually fit in VRAM before blaming compute; see <a href="#tradeoffs">Throughput expectations</a></td></tr>
+        <tr><td>Endless repetition / loops</td><td>Repeat penalty too low, especially on smaller models</td><td>Raise the repeat penalty; see <a href="#prompt">Sampling parameters</a></td></tr>
+        <tr><td>Ignores parts of the system prompt</td><td>Aggressive quantization (Q3 and below) degrading instruction-following</td><td>Bump to Q4_K_M or Q5_K_M before rewriting the prompt; see <a href="#prompt">Quantization as a prompt-quality lever</a></td></tr>
+        <tr><td>Garbled or nonsensical output</td><td>Wrong or mismatched chat template</td><td>Use the exact template the model was fine-tuned on; see <a href="#prompt">System prompt</a></td></tr>
+        <tr><td>Malformed tool calls in an agent loop</td><td>Model not trained for function-calling</td><td>Switch to a "Coder" or tool-use fine-tune; see <a href="#harness">Model fit</a></td></tr>
+        <tr><td>Quality drops on long conversations</td><td>Approaching or past the model's native context window</td><td>Test at the context length you'll actually use; be cautious with YaRN extension near its limit, see <a href="#prompt">Context length and YaRN</a></td></tr>
+      </tbody>
+    </table>
+
+    <div class="callout warn">
+      <div class="label">Before you file a bug</div>
+      <p>We recommend ruling out hardware fit and quantization first. Most reports that a local model is performing poorly trace back to an overly aggressive quantization level or a context window pushed past its trained range, rather than an actual defect in the model.</p>
+    </div>
+  </section>
+
+  <!-- 09 -->
+  <section id="tradeoffs">
+    <div class="section-tag"><span class="path">09 /</span> tradeoffs</div>
+    <h2>Tradeoffs: RAM, VRAM, Throughput</h2>
+    <p>Most performance and quality issues in local inference ultimately come down to memory bandwidth rather than model quality itself. We recommend assessing your hardware tier honestly and choosing models that fit it, rather than quantizing down to a level that visibly hurts output quality.</p>
+
+    <div class="gauge-row">
+      <div class="g-label">Quality</div>
+      <div class="gauge-track"><div class="gauge-fill" style="width:92%"></div></div>
+      <div class="g-val">Q8 / FP16</div>
+    </div>
+    <div class="gauge-row">
+      <div class="g-label">Quality</div>
+      <div class="gauge-track"><div class="gauge-fill" style="width:74%"></div></div>
+      <div class="g-val">Q5_K_M</div>
+    </div>
+    <div class="gauge-row">
+      <div class="g-label">Quality</div>
+      <div class="gauge-track"><div class="gauge-fill" style="width:60%"></div></div>
+      <div class="g-val">Q4_K_M</div>
+    </div>
+    <div class="gauge-row">
+      <div class="g-label">Quality</div>
+      <div class="gauge-track"><div class="gauge-fill" style="width:38%"></div></div>
+      <div class="g-val">Q3 and below</div>
+    </div>
+    <p class="dim">Q4_K_M is the standard sweet spot: a small, usually acceptable quality loss for a large memory saving. Q5/Q6 when the task is quality-sensitive and you have the headroom. Q8/full precision is rarely worth it outside of evaluation work.</p>
+
+    <h3>Hardware tiers</h3>
+
+    <div class="tier-card">
+      <div class="tier-head">
+        <div class="tier-name">Apple Silicon, unified memory</div>
+        <div class="tier-spec">16–24GB · e.g. M-series MacBook Air</div>
+      </div>
+      <p>MoE models like <strong>Qwen3-Coder-30B-A3B</strong> (4-bit MLX) fit comfortably: the "30B" label is the total parameter count, but only about 3B are active per token, so it runs like a much smaller dense model. We recommend MLX over GGUF on this tier, since the throughput difference is substantial rather than marginal.</p>
+    </div>
+
+    <div class="tier-card">
+      <div class="tier-head">
+        <div class="tier-name">Consumer NVIDIA</div>
+        <div class="tier-spec">8–12GB VRAM · RTX 3060/4060 class</div>
+      </div>
+      <p>8B–14B dense models at Q4_K_M fit with room for reasonable context length. This is the most common "just works" tier for a daily-driver coding assistant.</p>
+    </div>
+
+    <div class="tier-card">
+      <div class="tier-head">
+        <div class="tier-name">VRAM-constrained / older GPU</div>
+        <div class="tier-spec">6GB · e.g. GTX 1660-class GPU</div>
+      </div>
+      <p>Stay at 4B-8B, Q4. Loading a model larger than available VRAM causes it to spill into system RAM, which sharply reduces tokens per second. The fix is a smaller model or a more aggressive quantization level; increasing context length does not help in a VRAM-constrained setup.</p>
+    </div>
+
+    <div class="tier-card">
+      <div class="tier-head">
+        <div class="tier-name">Workstation / high-memory</div>
+        <div class="tier-spec">64GB+ · Mac Studio, multi-GPU</div>
+      </div>
+      <p>Full 32B–70B dense models at Q4 with real context headroom, or large MoE models where active-parameter count keeps throughput high despite a big total footprint.</p>
+    </div>
+
+    <h3>Throughput expectations</h3>
+    <p>Tokens/sec is a function of memory bandwidth, not just compute. That's why unified memory and VRAM-resident models feel dramatically faster than anything spilling into system RAM. If a model runs slower than expected, check whether it actually fit in VRAM or unified memory before blaming the model.</p>
+
+    <p><strong>MoE architectures</strong> (Qwen3-*-A3B, Mixtral) are worth defaulting to when memory is the binding constraint: active-parameter count determines throughput and often matters more than total parameter count for how the model actually feels to use.</p>
+
+    <div class="callout">
+      <div class="label">Bottom line</div>
+      <p>The model should be matched to the machine, not the reverse. A well-quantized model that fits comfortably within your VRAM or unified memory will consistently outperform, in terms of tokens per second at usable quality, a larger model that is short on headroom.</p>
+    </div>
+  </section>
+
+  <!-- 10 -->
+  <section id="lumo">
+    <div class="section-tag"><span class="path">10 /</span> hosted-privacy-layers</div>
+    <h2>Where Lumo and Duck.ai Fit</h2>
+    <p><a href="https://lumo.proton.me" target="_blank" rel="noopener">Lumo</a> (Proton) and <a href="https://duckduckgo.com/aichat" target="_blank" rel="noopener">Duck.ai</a> (DuckDuckGo) both get pitched as "the private way to use AI." Both sit in real, useful middle ground between fully local and handing prompts straight to a big-tech platform, but they get there by two structurally different routes.</p>
+
+    <h3>Two different privacy mechanisms</h3>
+    <p>Lumo runs open-weight models (currently Qwen and GLM variants, with earlier deployments of Mistral Nemo, OLMo 2, and NVIDIA's OpenHands) on servers Proton itself controls. The privacy claim rests on Proton's infrastructure and no-log policy.</p>
+    <p>Duck.ai doesn't host its own models at all. It's an <strong>anonymizing proxy</strong> sitting in front of third-party providers (Anthropic, OpenAI, Mistral, and Meta among them), stripping identifying metadata (including your IP) before forwarding the request, so it arrives looking like it came from DuckDuckGo rather than you. A subset of its models (currently gpt-oss-120b and Gemma, hosted via Tinfoil) go a step further and run inside a trusted execution environment, so even the compute provider can't see the prompt. DuckDuckGo labels these "zero provider visibility."</p>
+    <p>Lumo's privacy comes from <em>who</em> runs the model. Duck.ai's privacy comes from <em>what the provider can see about you</em>, regardless of who's running it, including, for most of its lineup, the same closed frontier models (Claude, GPT) you'd use directly anyway.</p>
+
+    <h3>What that trades off</h3>
+    <ul>
+      <li><strong>Model capability</strong>: Duck.ai's paid tiers give you access to genuinely frontier models (Claude Sonnet 4.6, Claude Opus 4.8, GPT‑5.4) anonymized. Lumo's ceiling is whatever open-weight model Proton has chosen to host, generally a step below frontier closed models on raw capability.</li>
+      <li><strong>Trust surface</strong>: Duck.ai asks you to trust both DuckDuckGo's anonymization layer <em>and</em> each upstream provider's zero-data-retention agreement. Lumo asks you to trust one party end to end. More parties isn't automatically worse: the TEE-based "zero provider visibility" models are arguably a stronger technical guarantee than either, but it is a different, larger trust surface to reason about.</li>
+      <li><strong>Openness</strong>: neither service's orchestration layer is open source, mirroring the gap covered in <a href="#taxonomy">Model Taxonomy</a>: the models involved may be open-weight (Lumo) or closed (most of Duck.ai's lineup), but the service wrapping them is opaque either way.</li>
+      <li><strong>Cost of entry</strong>: Duck.ai requires no account at all for its free tier, the lowest-friction option of anything in this document.</li>
+    </ul>
+
+    <h3>How they compare</h3>
+    <table>
+      <thead><tr><th></th><th>Local stack (this doc)</th><th>Lumo</th><th>Duck.ai</th></tr></thead>
+      <tbody>
+        <tr><td>Where inference runs</td><td>Your hardware</td><td>Proton's servers</td><td>Third-party providers, via a DuckDuckGo proxy</td></tr>
+        <tr><td>Models used</td><td>Whatever you choose</td><td>Proton-hosted open-weight models</td><td>Mostly closed frontier models, plus some open models in a TEE</td></tr>
+        <tr><td>Data leaves the device</td><td>Never</td><td>Yes, encrypted in transit and at rest</td><td>Yes, anonymized before leaving DuckDuckGo's proxy</td></tr>
+        <tr><td>Trust model</td><td>None required</td><td>Trust Proton end to end</td><td>Trust DuckDuckGo's anonymization + each upstream provider's agreement</td></tr>
+        <tr><td>Account required</td><td>No</td><td>Yes</td><td>No, for the free tier</td></tr>
+        <tr><td>Model capability ceiling</td><td>Bounded by your hardware</td><td>Strong open-weight models</td><td>Frontier closed models on paid tiers</td></tr>
+        <tr><td>Auditability</td><td>Full: every layer is yours</td><td>Partial: clients open, service internals aren't</td><td>Partial: proxy logic and TEE claims aren't independently auditable by you</td></tr>
+      </tbody>
+    </table>
+
+    <div class="callout">
+      <div class="label">Where they make sense</div>
+      <p>Both are reasonable choices when you want a real step up in privacy over using ChatGPT or Gemini directly, but don't have (or don't want to manage) hardware capable of running a strong model locally. Duck.ai is the lower-friction pick if you want occasional access to frontier-grade models anonymized. Lumo is the better fit if you'd rather the compute itself, not just your identity, stay off big-tech infrastructure. Neither substitutes for the isolation guarantees in <a href="#sandbox">Sandboxing</a>, and neither removes the case for local inference on anything genuinely sensitive or confidential. See <a href="#why">Why Run Models Locally</a>.</p>
+    </div>
+  </section>
+
+  <!-- 11 -->
+  <section id="glossary">
+    <div class="section-tag"><span class="path">11 /</span> glossary</div>
+    <h2>Glossary</h2>
+    <p>Terms used throughout this guide without re-explaining them each time.</p>
+
+    <table>
+      <tbody>
+        <tr><td>GGUF</td><td>The standard file format for quantized models used by llama.cpp-based tools. See <a href="#landscape">Tool Landscape</a>.</td></tr>
+        <tr><td>MLX</td><td>Apple's array framework and model format, native to Apple Silicon's unified memory. See <a href="#landscape">Tool Landscape</a>.</td></tr>
+        <tr><td>Quantization</td><td>Reducing the numeric precision of a model's weights (e.g. FP16 → Q4) to shrink memory footprint, at some cost to output quality. See <a href="#tradeoffs">Tradeoffs</a>.</td></tr>
+        <tr><td>Q4_K_M / Q5_K_M / Q8_0</td><td>Specific quantization schemes; the number is roughly the bits per weight, the suffix denotes the method. Q4_K_M is the common default. See <a href="#tradeoffs">Tradeoffs</a>.</td></tr>
+        <tr><td>Context window</td><td>The maximum number of tokens (prompt + conversation + output) a model can attend to at once. See <a href="#prompt">Context length and YaRN</a>.</td></tr>
+        <tr><td>YaRN</td><td>A technique for extending a model's context window beyond what it was originally trained on, with a quality cost near the extended limit. See <a href="#prompt">Context length and YaRN</a>.</td></tr>
+        <tr><td>Mixture-of-Experts (MoE)</td><td>An architecture where only a subset of the model's parameters ("experts") activate per token, so total size and compute cost diverge. See <a href="#taxonomy">Model Taxonomy</a>.</td></tr>
+        <tr><td>Active parameters</td><td>The parameter count that actually fires per token in an MoE model; determines throughput, unlike total parameter count. See <a href="#taxonomy">Model Taxonomy</a>.</td></tr>
+        <tr><td>Dense model</td><td>An architecture where every parameter fires on every token; the default assumption unless a model card says otherwise. See <a href="#taxonomy">Model Taxonomy</a>.</td></tr>
+        <tr><td>Instruct / Chat model</td><td>A base model fine-tuned to follow directions and hold a conversation, as opposed to a raw base model. See <a href="#taxonomy">Model Taxonomy</a>.</td></tr>
+        <tr><td>LoRA</td><td>Low-Rank Adaptation, a lightweight fine-tuning method that trains a small set of additional weights instead of the full model.</td></tr>
+        <tr><td>Chat template</td><td>The exact token structure (system/user/assistant markers) a model was fine-tuned on; deviating from it degrades output quality. See <a href="#prompt">System prompt</a>.</td></tr>
+        <tr><td>Tokens/sec (throughput)</td><td>Generation speed; primarily bound by memory bandwidth, not raw compute. See <a href="#tradeoffs">Throughput expectations</a>.</td></tr>
+        <tr><td>Prompt injection</td><td>Instructions embedded in content the model reads (a file, a webpage, a tool result) that weren't authored by the user. See <a href="#sandbox">Prompt injection</a>.</td></tr>
+      </tbody>
+    </table>
+  </section>
+
+  <!-- 12 -->
+  <section id="references">
+    <div class="section-tag"><span class="path">12 /</span> references</div>
+    <h2>References</h2>
+    <p>Further reading behind the claims made throughout this guide.</p>
+
+    <h3>Papers</h3>
+    <ul>
+      <li>Vaswani, Ashish, et al. "Attention Is All You Need." <em>arXiv</em>, arXiv:1706.03762, June 2017, <a href="https://arxiv.org/abs/1706.03762" target="_blank" rel="noopener">arxiv.org/abs/1706.03762</a>.</li>
+      <li>Ouyang, Long, et al. "Training Language Models to Follow Instructions with Human Feedback." <em>arXiv</em>, arXiv:2203.02155, 4 Mar. 2022, <a href="https://arxiv.org/abs/2203.02155" target="_blank" rel="noopener">arxiv.org/abs/2203.02155</a>.</li>
+      <li>Frantar, Elias, et al. "GPTQ: Accurate Post-Training Quantization for Generative Pre-Trained Transformers." <em>arXiv</em>, arXiv:2210.17323, Oct. 2022, <a href="https://arxiv.org/abs/2210.17323" target="_blank" rel="noopener">arxiv.org/abs/2210.17323</a>.</li>
+      <li>Greshake, Kai, et al. "Not What You've Signed Up For: Compromising Real-World LLM-Integrated Applications with Indirect Prompt Injection." <em>arXiv</em>, arXiv:2302.12173, Feb. 2023, <a href="https://arxiv.org/abs/2302.12173" target="_blank" rel="noopener">arxiv.org/abs/2302.12173</a>.</li>
+      <li>Dettmers, Tim, et al. "QLoRA: Efficient Finetuning of Quantized LLMs." <em>arXiv</em>, arXiv:2305.14314, 23 May 2023, <a href="https://arxiv.org/abs/2305.14314" target="_blank" rel="noopener">arxiv.org/abs/2305.14314</a>.</li>
+      <li>Peng, Bowen, et al. "YaRN: Efficient Context Window Extension of Large Language Models." <em>arXiv</em>, arXiv:2309.00071, Sept. 2023, <a href="https://arxiv.org/abs/2309.00071" target="_blank" rel="noopener">arxiv.org/abs/2309.00071</a>.</li>
+      <li>Jiang, Albert Q., et al. "Mixtral of Experts." <em>arXiv</em>, arXiv:2401.04088, Jan. 2024, <a href="https://arxiv.org/abs/2401.04088" target="_blank" rel="noopener">arxiv.org/abs/2401.04088</a>.</li>
+      <li>Arditi, Andy, et al. "Refusal in Language Models Is Mediated by a Single Direction." <em>arXiv</em>, arXiv:2406.11717, June 2024, <a href="https://arxiv.org/abs/2406.11717" target="_blank" rel="noopener">arxiv.org/abs/2406.11717</a>.</li>
+    </ul>
+
+    <h3>Blog posts</h3>
+    <ul>
+      <li>Raschka, Sebastian. "LLM Finetuning with LoRA." <em>Sebastian Raschka's Blog</em>, 2023, <a href="https://sebastianraschka.com/blog/2023/llm-finetuning-lora.html" target="_blank" rel="noopener">sebastianraschka.com/blog/2023/llm-finetuning-lora.html</a>.</li>
+      <li>Sanseviero, Omar, et al. "Mixture of Experts Explained." <em>Hugging Face Blog</em>, Hugging Face, 2023, <a href="https://huggingface.co/blog/moe" target="_blank" rel="noopener">huggingface.co/blog/moe</a>.</li>
+    </ul>
+
+    <h3>YouTube videos</h3>
+    <ul>
+      <li>Karpathy, Andrej. "[1hr Talk] Intro to Large Language Models." <em>YouTube</em>, 23 Nov. 2023, <a href="https://www.youtube.com/watch?v=zjkBMFhNj_g" target="_blank" rel="noopener">www.youtube.com/watch?v=zjkBMFhNj_g</a>.</li>
+      <li>Karpathy, Andrej. "Deep Dive into LLMs like ChatGPT." <em>YouTube</em>, 5 Feb. 2025, <a href="https://www.youtube.com/watch?v=7xTGNNLPyMI" target="_blank" rel="noopener">www.youtube.com/watch?v=7xTGNNLPyMI</a>.</li>
+    </ul>
+  </section>
+
+  <div class="legal">
+    <div class="legal-label">Legal</div>
+    <p>This document is provided for general informational purposes only and does not constitute technical, security, legal, or professional advice of any kind. It reflects a point-in-time understanding of tools, models, and services that change frequently; specific facts, figures, pricing, capabilities, and claims about third-party products (including but not limited to Jan.AI, llamafile, LM Studio, Ollama, llama.cpp, Lumo, and Duck.ai) may be inaccurate, outdated, or superseded by the time you read this. Verify anything load-bearing against the vendor's current documentation before relying on it.</p>
+    <p>Nothing here is a substitute for your own risk assessment. Running local models, agent harnesses, and self-hosted infrastructure carries real risks, including but not limited to data loss, security vulnerabilities, prompt injection, network exposure, and unintended tool execution. You are solely responsible for evaluating the suitability of any tool, model, or configuration described here for your own environment, and for implementing appropriate safeguards.</p>
+    <p>Twin Kites LLC provides this document "as is," without warranty of any kind, express or implied, including without limitation warranties of accuracy, completeness, merchantability, fitness for a particular purpose, or non-infringement. To the fullest extent permitted by law, Twin Kites LLC disclaims all liability for any direct, indirect, incidental, consequential, or other damages arising from or related to the use of, or reliance on, this document.</p>
+    <p>Product names, trademarks, and registered trademarks mentioned are property of their respective owners and are used here for identification purposes only; no endorsement or affiliation is implied.</p>
+    <p>This page includes an optional chat feature ("ask the guide") that runs a language model directly in your browser via WebGPU. Its responses are AI-generated, not written or reviewed by Twin Kites LLC, and may be inaccurate, incomplete, or misleading. It is provided for convenience only and does not constitute advice of any kind. Model weights are downloaded from third-party sources (Hugging Face, via the transformers.js project) and run entirely on your device; no chat content is transmitted to Twin Kites LLC or any server. Use it at your own risk and verify anything load-bearing independently.</p>
+  </div>
+
+  <footer>
+    Local LLM Best Practices: a field guide to running language models on your own hardware
+    <br>Tools, models, and prices drift fast. Verify anything load-bearing against current docs.
+  </footer>
+
+</div>
+
+<button id="chat-toggle" title="Ask about this guide" aria-label="Open chat">?</button>
+
+<div id="chat-panel" role="dialog" aria-label="Chat about this guide">
+  <div id="chat-header">
+    <span class="chat-title">ask the guide (AI)</span>
+    <select id="chat-model-select" aria-label="Model"></select>
+    <button id="chat-close" aria-label="Close chat">&times;</button>
+  </div>
+  <div id="chat-status">not loaded, pick a model and press load</div>
+  <div id="chat-log" aria-live="polite" aria-atomic="false"></div>
+  <div id="chat-suggestions">
+    <button type="button" class="suggestion-chip" disabled>What is GGUF?</button>
+    <button type="button" class="suggestion-chip" disabled>What is Q4_K_M?</button>
+    <button type="button" class="suggestion-chip" disabled>What is Ollama?</button>
+    <button type="button" class="suggestion-chip" disabled>What is a context window?</button>
+  </div>
+  <div id="chat-input-row">
+    <textarea id="chat-input" rows="1" placeholder="Ask about this guide..." aria-label="Message" disabled></textarea>
+    <button id="chat-send" disabled>send</button>
+  </div>
+  <div id="chat-disclaimer">This is a small AI model (135M params), chosen for reliability across browsers, not accuracy. It writes fluent sentences that are frequently just wrong, including inventing terms and definitions that don't appear anywhere in this guide. Verify anything it tells you against the actual text above. Runs fully in your browser via WebGPU; nothing leaves your machine. First load downloads model weights and caches them.</div>
+</div>
+
+<script>
+  document.getElementById("theme-toggle").addEventListener("click", function () {
+    var root = document.documentElement;
+    var systemLight = window.matchMedia("(prefers-color-scheme: light)").matches;
+    var current = root.getAttribute("data-theme") || (systemLight ? "light" : "dark");
+    var next = current === "light" ? "dark" : "light";
+    root.setAttribute("data-theme", next);
+    localStorage.setItem("theme", next);
+  });
+
+  document.querySelectorAll(".copy-btn").forEach(function (btn) {
+    btn.addEventListener("click", function () {
+      var code = btn.parentElement.querySelector("pre code").innerText;
+      navigator.clipboard.writeText(code).then(function () {
+        var original = btn.textContent;
+        btn.textContent = "copied";
+        btn.classList.add("copied");
+        setTimeout(function () {
+          btn.textContent = original;
+          btn.classList.remove("copied");
+        }, 1500);
+      });
+    });
+  });
+</script>
+<script type="module" src="chat.js"></script>
+</body>
+</html>
